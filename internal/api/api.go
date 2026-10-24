@@ -68,6 +68,9 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("/api/modpack/import", s.handleModpackImport)
 	mux.HandleFunc("/api/resourcepacks", s.handleListResourcePacks)
 	mux.HandleFunc("/api/logs", s.handleLogs)
+	mux.HandleFunc("/auth/microsoft", s.handleMicrosoftCallback)
+	mux.HandleFunc("/api/auth/microsoft/url", s.handleMicrosoftURL)
+	mux.HandleFunc("/api/auth/littleskin", s.handleLittleSkinLogin)
 	return mux
 }
 
@@ -385,6 +388,48 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 		logStr = logStr[len(logStr)-51200:]
 	}
 	writeJSON(w, map[string]any{"log": logStr})
+}
+
+// GET /api/auth/microsoft/url — 返回授权 URL
+func (s *Server) handleMicrosoftURL(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]any{"url": auth.MicrosoftAuthURL()})
+}
+
+// GET /auth/microsoft?code=xxx — 微软回调
+func (s *Server) handleMicrosoftCallback(w http.ResponseWriter, r *http.Request) {
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		writeError(w, 400, "缺少 code")
+		return
+	}
+	acc, err := auth.ExchangeMicrosoftCode(code)
+	if err != nil {
+		fmt.Fprintf(w, "<h1>登录失败</h1><p>%s</p>", err.Error())
+		return
+	}
+	list, _ := s.AuthStore.Load()
+	list = append(list, acc)
+	_ = s.AuthStore.Save(list)
+	fmt.Fprintf(w, "<h1>登录成功！</h1><p>欢迎 %s，可以关闭此窗口。</p>", acc.Username)
+}
+
+// POST /api/auth/littleskin { baseUrl, username, password }
+func (s *Server) handleLittleSkinLogin(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		BaseURL  string `json:"baseUrl"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	acc, err := auth.LittleSkinLogin(req.BaseURL, req.Username, req.Password)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	list, _ := s.AuthStore.Load()
+	list = append(list, acc)
+	_ = s.AuthStore.Save(list)
+	writeJSON(w, acc)
 }
 
 // helpers

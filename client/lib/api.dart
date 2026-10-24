@@ -152,4 +152,17 @@ class DMHLApi {
     final r = await http.get(Uri.parse('$base/api/logs?instanceId=$instanceId'));
     return jsonDecode(r.body)['log'] ?? '';
   }
+
+  /// 通用 GET
+  Future<Map<String, dynamic>> get(String path) async {
+    final r = await http.get(Uri.parse('$base$path'));
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// 通用 POST
+  Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) async {
+    final r = await http.post(Uri.parse('$base$path'),
+        headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
 }
