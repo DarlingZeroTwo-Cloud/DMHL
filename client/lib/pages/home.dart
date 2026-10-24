@@ -13,6 +13,7 @@ class _HomePageState extends State<HomePage> {
   List instances = [];
   bool loading = true;
   String status = '';
+  String launchingId = '';
 
   @override
   void initState() {
@@ -46,41 +47,68 @@ class _HomePageState extends State<HomePage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.inbox, size: 64, color: Colors.grey),
+                      Icon(Icons.inbox, size: 64, color: Colors.grey.shade400),
                       const SizedBox(height: 12),
-                      const Text('还没有实例，点右下角新建一个'),
+                      const Text('还没有实例，去"版本下载"页下载一个版本'),
                       if (status.isNotEmpty) Text(status, style: const TextStyle(color: Colors.red)),
                     ],
                   ),
                 )
-              : ListView.separated(
-                  padding: const EdgeInsets.all(24),
-                  itemCount: instances.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (_, i) {
-                    final ins = instances[i];
-                    return Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.sports_esports, size: 36),
-                        title: Text(ins['name'] ?? ins['id']),
-                        subtitle: Text('版本 ${ins['versionId']} · ${ins['loader'] ?? 'vanilla'}'),
-                        trailing: FilledButton(
-                          onPressed: () => _launch(ins['id']),
-                          child: const Text('启动'),
+              : RefreshIndicator(
+                  onRefresh: reload,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.all(24),
+                    itemCount: instances.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (_, i) {
+                      final ins = instances[i];
+                      final isLaunching = launchingId == ins['id'];
+                      return Card(
+                        elevation: 0,
+                        color: Colors.white.withValues(alpha: 0.6),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          leading: Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primaryContainer,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.sports_esports),
+                          ),
+                          title: Text(ins['name'] ?? ins['id'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          subtitle: Text('版本 ${ins['versionId']} · ${ins['loader'] ?? 'vanilla'}'),
+                          trailing: isLaunching
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                              : FilledButton.icon(
+                                  onPressed: () => _launch(ins['id']),
+                                  icon: const Icon(Icons.play_arrow),
+                                  label: const Text('启动'),
+                                ),
                         ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
     );
   }
 
   Future<void> _launch(String id) async {
-    final r = await widget.api.launch(id);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(r['message'] ?? '已发送启动请求')),
-    );
+    setState(() => launchingId = id);
+    try {
+      final r = await widget.api.launch(id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(r['message'] ?? '已启动')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('启动失败: $e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => launchingId = '');
+    }
   }
 
   void _showCreateDialog() {
@@ -93,9 +121,9 @@ class _HomePageState extends State<HomePage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameCtl, decoration: const InputDecoration(labelText: '实例名')),
+            TextField(controller: nameCtl, decoration: const InputDecoration(labelText: '实例名', hintText: '我的生存世界')),
             const SizedBox(height: 12),
-            TextField(controller: verCtl, decoration: const InputDecoration(labelText: 'MC 版本号')),
+            TextField(controller: verCtl, decoration: const InputDecoration(labelText: 'MC 版本号', hintText: '1.21.4')),
           ],
         ),
         actions: [
