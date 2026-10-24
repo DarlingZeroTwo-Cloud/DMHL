@@ -128,6 +128,22 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 32),
           Center(
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                final r = await widget.api.checkUpdate();
+                if (!mounted) return;
+                final gh = r['github'];
+                final latest = gh != null ? gh['tag_name'] : '未知';
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('当前 v${r['current']}，最新 $latest')),
+                );
+              },
+              icon: const Icon(Icons.system_update),
+              label: const Text('检查 DMHL 更新'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Center(
             child: FilledButton.icon(
               onPressed: () async {
                 await widget.api.saveConfig(Map<String, dynamic>.from(cfg));

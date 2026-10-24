@@ -78,13 +78,23 @@ class _HomePageState extends State<HomePage> {
                           ),
                           title: Text(ins['name'] ?? ins['id'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           subtitle: Text('版本 ${ins['versionId']} · ${ins['loader'] ?? 'vanilla'}'),
-                          trailing: isLaunching
-                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                              : FilledButton.icon(
-                                  onPressed: () => _launch(ins['id']),
-                                  icon: const Icon(Icons.play_arrow),
-                                  label: const Text('启动'),
-                                ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                onPressed: () => _delete(ins['id'], ins['name']),
+                              ),
+                              const SizedBox(width: 8),
+                              isLaunching
+                                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                                  : FilledButton.icon(
+                                      onPressed: () => _launch(ins['id']),
+                                      icon: const Icon(Icons.play_arrow),
+                                      label: const Text('启动'),
+                                    ),
+                            ],
+                          ),
                         ),
                       );
                     },
@@ -109,6 +119,23 @@ class _HomePageState extends State<HomePage> {
     } finally {
       if (mounted) setState(() => launchingId = '');
     }
+  }
+
+  Future<void> _delete(String id, String? name) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('删除实例'),
+        content: Text('确定删除 "$name"？游戏存档将一并删除。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('删除')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await widget.api.deleteInstance(id);
+    reload();
   }
 
   void _showCreateDialog() {

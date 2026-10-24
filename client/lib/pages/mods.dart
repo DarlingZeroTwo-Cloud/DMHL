@@ -82,7 +82,11 @@ class _ModsPageState extends State<ModsPage> {
                           ),
                           title: Text(m['title'], style: const TextStyle(fontWeight: FontWeight.bold)),
                           subtitle: Text(m['description'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis),
-                          trailing: Text('${_fmt(m['downloads'])} 下载'),
+                          trailing: FilledButton.icon(
+                            icon: const Icon(Icons.download),
+                            label: Text('${_fmt(m['downloads'])}'),
+                            onPressed: () => _downloadMod(m),
+                          ),
                         ),
                       );
                     },
@@ -98,5 +102,42 @@ class _ModsPageState extends State<ModsPage> {
     if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
     if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
     return '$n';
+  }
+
+  Future<void> _downloadMod(Map m) async {
+    // 先列实例让用户选
+    final insts = await widget.api.instances();
+    if (!mounted) return;
+    if (insts.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先创建一个实例')));
+      return;
+    }
+    String? pickedId;
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('下载 ${m['title']} 到哪个实例？'),
+        content: SizedBox(
+          width: 300,
+          child: ListView(
+            shrinkWrap: true,
+            children: insts.map<Widget>((i) => ListTile(
+                  title: Text(i['name'] ?? i['id']),
+                  subtitle: Text(i['versionId'] ?? ''),
+                  onTap: () {
+                    pickedId = i['id'];
+                    Navigator.pop(context);
+                  },
+                )).toList(),
+          ),
+        ),
+      ),
+    );
+    if (pickedId == null || !mounted) return;
+    final r = await widget.api.downloadMod(m['slug'], '', 'fabric', pickedId!);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(r['message'] ?? '下载完成')),
+    );
   }
 }

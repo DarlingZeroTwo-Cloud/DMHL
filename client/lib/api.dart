@@ -104,4 +104,30 @@ class DMHLApi {
     );
     return jsonDecode(r.body);
   }
+
+  /// 删除实例
+  Future<Map<String, dynamic>> deleteInstance(String id) async {
+    final r = await http.post(
+      Uri.parse('$base/api/instances/delete'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'id': id}),
+    );
+    return jsonDecode(r.body);
+  }
+
+  /// 下载 mod 到实例 mods/
+  Future<Map<String, dynamic>> downloadMod(String slug, String mc, String loader, String instanceId) async {
+    final r = await http.post(
+      Uri.parse('$base/api/modrinth/download'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'slug': slug, 'mc': mc, 'loader': loader, 'instanceId': instanceId}),
+    );
+    return jsonDecode(r.body);
+  }
+
+  /// 检查更新
+  Future<Map<String, dynamic>> checkUpdate() async {
+    final r = await http.get(Uri.parse('$base/api/update/check'));
+    return jsonDecode(r.body);
+  }
 }

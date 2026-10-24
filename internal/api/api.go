@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"dmhl/internal/mirror"
 	"dmhl/internal/mojang"
 	"dmhl/internal/skin"
+	"dmhl/internal/update"
 )
 
 // Server HTTP API 服务
@@ -59,6 +61,9 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("/api/skin/import", s.handleSkinImport)
 	mux.HandleFunc("/api/fabric/loaders", s.handleFabricLoaders)
 	mux.HandleFunc("/api/modrinth/search", s.handleModrinthSearch)
+	mux.HandleFunc("/api/modrinth/download", s.handleModrinthDownload)
+	mux.HandleFunc("/api/instances/delete", s.handleDeleteInstance)
+	mux.HandleFunc("/api/update/check", s.handleUpdateCheck)
 	return mux
 }
 
@@ -259,6 +264,72 @@ func (s *Server) handleModrinthSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, hits)
+}
+
+// POST /api/modrinth/download { slug, mc, loader, instanceId }
+func (s *Server) handleModrinthDownload(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Slug       string `json:"slug"`
+		MC         string `json:"mc"`
+		Loader     string `json:"loader"`
+		InstanceID string `json:"instanceId"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	versions, err := modrinth.ListVersions(req.Slug, req.MC, req.Loader)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if len(versions) == 0 {
+		writeError(w, 404, "无匹配版本")
+		return
+	}
+	v := versions[0]
+	if len(v.Files) == 0 {
+		writeError(w, 404, "无下载文件")
+		return
+	}
+	fileURL := v.Files[0].URL
+	fileName := v.Files[0].Filename
+	modsDir := filepath.Join(s.Cfg.DataDir, "instances", req.InstanceID, "mods")
+	_ = os.MkdirAll(modsDir, 0755)
+	dest := filepath.Join(modsDir, fileName)
+	if _, err := os.Stat(dest); err == nil {
+		writeJSON(w, map[string]any{"ok": true, "path": dest, "message": "已存在"})
+		return
+	}
+	resp, err := http.Get(fileURL)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	defer resp.Body.Close()
+	f, _ := os.Create(dest)
+	defer f.Close()
+	_, _ = io.Copy(f, resp.Body)
+	writeJSON(w, map[string]any{"ok": true, "path": dest, "message": "mod 已下载"})
+}
+
+// POST /api/instances/delete { id }
+func (s *Server) handleDeleteInstance(w http.ResponseWriter, r *http.Request) {
+	var req struct{ ID string `json:"id"` }
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := s.InstMgr.Delete(req.ID); err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// GET /api/update/check
+func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
+	gi, _ := update.CheckGitHub()
+	ge, _ := update.CheckGitee()
+	writeJSON(w, map[string]any{
+		"current": update.CurrentVersion(),
+		"github":  gi,
+		"gitee":   ge,
+	})
 }
 
 // helpers
