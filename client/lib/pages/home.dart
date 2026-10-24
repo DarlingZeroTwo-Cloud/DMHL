@@ -208,33 +208,57 @@ class _HomePageState extends State<HomePage> {
   void _showCreateDialog() {
     final nameCtl = TextEditingController();
     final verCtl = TextEditingController(text: '1.21.4');
+    String loader = 'vanilla';
+    String loaderVer = '推荐';
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('新建实例'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: nameCtl, decoration: const InputDecoration(labelText: '实例名', hintText: '我的生存世界')),
-            const SizedBox(height: 12),
-            TextField(controller: verCtl, decoration: const InputDecoration(labelText: 'MC 版本号', hintText: '1.21.4')),
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('新建实例'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nameCtl, decoration: const InputDecoration(labelText: '实例名', hintText: '我的生存世界')),
+              const SizedBox(height: 12),
+              TextField(controller: verCtl, decoration: const InputDecoration(labelText: 'MC 版本号', hintText: '1.21.4')),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: loader,
+                decoration: const InputDecoration(labelText: '模组加载器'),
+                items: const [
+                  DropdownMenuItem(value: 'vanilla', child: Text('原版')),
+                  DropdownMenuItem(value: 'fabric', child: Text('Fabric')),
+                  DropdownMenuItem(value: 'forge', child: Text('Forge')),
+                  DropdownMenuItem(value: 'neoforge', child: Text('NeoForge')),
+                ],
+                onChanged: (v) => setSt(() => loader = v ?? 'vanilla'),
+              ),
+              if (loader != 'vanilla') ...[
+                const SizedBox(height: 12),
+                TextField(
+                  decoration: const InputDecoration(labelText: '加载器版本（留空用推荐）'),
+                  onChanged: (v) => loaderVer = v,
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+            FilledButton(
+              onPressed: () async {
+                await widget.api.createInstance({
+                  'name': nameCtl.text,
+                  'versionId': verCtl.text,
+                  'loader': loader,
+                  'loaderVer': loaderVer,
+                });
+                if (mounted) Navigator.pop(context);
+                reload();
+              },
+              child: const Text('创建'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          FilledButton(
-            onPressed: () async {
-              await widget.api.createInstance({
-                'name': nameCtl.text,
-                'versionId': verCtl.text,
-                'loader': 'vanilla',
-              });
-              if (mounted) Navigator.pop(context);
-              reload();
-            },
-            child: const Text('创建'),
-          ),
-        ],
       ),
     );
   }

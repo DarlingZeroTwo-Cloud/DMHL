@@ -12,8 +12,10 @@ import (
 	"dmhl/internal/auth"
 	"dmhl/internal/config"
 	"dmhl/internal/fabric"
+	"dmhl/internal/forge"
 	"dmhl/internal/instance"
 	"dmhl/internal/install"
+	"dmhl/internal/java"
 	"dmhl/internal/launcher"
 	"dmhl/internal/modrinth"
 	"dmhl/internal/mirror"
@@ -71,6 +73,9 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("/auth/microsoft", s.handleMicrosoftCallback)
 	mux.HandleFunc("/api/auth/microsoft/url", s.handleMicrosoftURL)
 	mux.HandleFunc("/api/auth/littleskin", s.handleLittleSkinLogin)
+	mux.HandleFunc("/api/forge/versions", s.handleForgeVersions)
+	mux.HandleFunc("/api/neoforge/versions", s.handleNeoForgeVersions)
+	mux.HandleFunc("/api/forge/install", s.handleForgeInstall)
 	return mux
 }
 
@@ -430,6 +435,57 @@ func (s *Server) handleLittleSkinLogin(w http.ResponseWriter, r *http.Request) {
 	list = append(list, acc)
 	_ = s.AuthStore.Save(list)
 	writeJSON(w, acc)
+}
+
+// GET /api/forge/versions?mc=1.20.1
+func (s *Server) handleForgeVersions(w http.ResponseWriter, r *http.Request) {
+	mc := r.URL.Query().Get("mc")
+	versions, err := forge.ListForgeVersions(mc)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"versions": versions})
+}
+
+// GET /api/neoforge/versions?mc=1.21.4
+func (s *Server) handleNeoForgeVersions(w http.ResponseWriter, r *http.Request) {
+	mc := r.URL.Query().Get("mc")
+	versions, err := forge.ListNeoForgeVersions(mc)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"versions": versions})
+}
+
+// POST /api/forge/install { mc, forgeVersion, instanceId, type: forge|neoforge }
+func (s *Server) handleForgeInstall(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		MCVersion   string `json:"mc"`
+		ForgeVersion string `json:"forgeVersion"`
+		InstanceID  string `json:"instanceId"`
+		Type        string `json:"type"` // forge | neoforge
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	mcDir := filepath.Join(s.Cfg.DataDir, "instances", req.InstanceID)
+	probe := java.NewProbe()
+	j, err := probe.FindBest()
+	javaPath := ""
+	if err == nil {
+		javaPath = j.Path
+	}
+	var versionID string
+	if req.Type == "neoforge" {
+		versionID, err = forge.InstallNeoForge(req.MCVersion, req.ForgeVersion, mcDir, javaPath)
+	} else {
+		versionID, err = forge.InstallForge(req.MCVersion, req.ForgeVersion, mcDir, javaPath)
+	}
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"versionId": versionID})
 }
 
 // helpers
