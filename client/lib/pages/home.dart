@@ -35,10 +35,21 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showCreateDialog(),
-        icon: const Icon(Icons.add),
-        label: const Text('新建实例'),
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'import',
+            onPressed: _importModpack,
+            child: const Icon(Icons.folder_open),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton.extended(
+            onPressed: () => _showCreateDialog(),
+            icon: const Icon(Icons.add),
+            label: const Text('新建实例'),
+          ),
+        ],
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
@@ -136,6 +147,62 @@ class _HomePageState extends State<HomePage> {
     if (ok != true) return;
     await widget.api.deleteInstance(id);
     reload();
+  }
+
+  void _importModpack() {
+    final pathCtl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('导入整合包 (.mrpack)'),
+        content: TextField(
+          controller: pathCtl,
+          decoration: const InputDecoration(hintText: '/path/to/pack.mrpack'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              // 先选实例
+              final insts = await widget.api.instances();
+              if (!mounted) return;
+              if (insts.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先创建实例')));
+                return;
+              }
+              String? pickedId;
+              await showDialog(
+                context: context,
+                builder: (_) => AlertDialog(
+                  title: const Text('导入到哪个实例？'),
+                  content: SizedBox(
+                    width: 300,
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: insts.map<Widget>((i) => ListTile(
+                            title: Text(i['name'] ?? i['id']),
+                            onTap: () {
+                              pickedId = i['id'];
+                              Navigator.pop(context);
+                            },
+                          )).toList(),
+                    ),
+                  ),
+                ),
+              );
+              if (pickedId == null) return;
+              final r = await widget.api.importModpack(pathCtl.text, pickedId!);
+              if (!mounted) return;
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('已导入 ${r['mods'] ?? 0} 个 mod')),
+              );
+            },
+            child: const Text('导入'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showCreateDialog() {

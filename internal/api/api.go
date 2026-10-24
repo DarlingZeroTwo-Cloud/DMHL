@@ -18,6 +18,7 @@ import (
 	"dmhl/internal/modrinth"
 	"dmhl/internal/mirror"
 	"dmhl/internal/mojang"
+	"dmhl/internal/modpack"
 	"dmhl/internal/skin"
 	"dmhl/internal/update"
 )
@@ -64,6 +65,9 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("/api/modrinth/download", s.handleModrinthDownload)
 	mux.HandleFunc("/api/instances/delete", s.handleDeleteInstance)
 	mux.HandleFunc("/api/update/check", s.handleUpdateCheck)
+	mux.HandleFunc("/api/modpack/import", s.handleModpackImport)
+	mux.HandleFunc("/api/resourcepacks", s.handleListResourcePacks)
+	mux.HandleFunc("/api/logs", s.handleLogs)
 	return mux
 }
 
@@ -153,7 +157,8 @@ func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	gameDir := filepath.Join(s.Cfg.DataDir, "instances", ins.ID)
-	im := install.New(gameDir, s.provider())
+	globalDir := filepath.Join(s.Cfg.DataDir, "shared")
+	im := install.New(gameDir, globalDir, s.provider())
 	if err := im.InstallVersion(vd, func(msg string, done, total int) {
 		log.Printf("[DMHL] 安装: %s", msg)
 	}); err != nil {
@@ -330,6 +335,56 @@ func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 		"github":  gi,
 		"gitee":   ge,
 	})
+}
+
+// POST /api/modpack/import { path, instanceId }
+func (s *Server) handleModpackImport(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path       string `json:"path"`
+		InstanceID string `json:"instanceId"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	gameDir := filepath.Join(s.Cfg.DataDir, "instances", req.InstanceID)
+	pack, err := modpack.ImportMRPack(req.Path, gameDir)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{
+		"ok":      true,
+		"name":    pack.Name,
+		"summary": pack.Summary,
+		"mods":    len(pack.Files),
+	})
+}
+
+// GET /api/resourcepacks?instanceId=
+func (s *Server) handleListResourcePacks(w http.ResponseWriter, r *http.Request) {
+	instID := r.URL.Query().Get("instanceId")
+	gameDir := filepath.Join(s.Cfg.DataDir, "instances", instID)
+	rps, _ := modpack.ListResourcePacks(gameDir)
+	sps, _ := modpack.ListShaderPacks(gameDir)
+	writeJSON(w, map[string]any{
+		"resourcepacks": rps,
+		"shaderpacks":   sps,
+	})
+}
+
+// GET /api/logs?instanceId=
+func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	instID := r.URL.Query().Get("instanceId")
+	logPath := filepath.Join(s.Cfg.DataDir, "instances", instID, "logs", "dmhl-launch.log")
+	b, err := os.ReadFile(logPath)
+	if err != nil {
+		writeJSON(w, map[string]any{"log": ""})
+		return
+	}
+	// 只返回最后 50KB
+	logStr := string(b)
+	if len(logStr) > 51200 {
+		logStr = logStr[len(logStr)-51200:]
+	}
+	writeJSON(w, map[string]any{"log": logStr})
 }
 
 // helpers

@@ -130,4 +130,26 @@ class DMHLApi {
     final r = await http.get(Uri.parse('$base/api/update/check'));
     return jsonDecode(r.body);
   }
+
+  /// 导入整合包 .mrpack
+  Future<Map<String, dynamic>> importModpack(String path, String instanceId) async {
+    final r = await http.post(
+      Uri.parse('$base/api/modpack/import'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'path': path, 'instanceId': instanceId}),
+    );
+    return jsonDecode(r.body);
+  }
+
+  /// 列资源包/光影包
+  Future<Map<String, dynamic>> listResourcePacks(String instanceId) async {
+    final r = await http.get(Uri.parse('$base/api/resourcepacks?instanceId=$instanceId'));
+    return jsonDecode(r.body);
+  }
+
+  /// 读日志
+  Future<String> getLogs(String instanceId) async {
+    final r = await http.get(Uri.parse('$base/api/logs?instanceId=$instanceId'));
+    return jsonDecode(r.body)['log'] ?? '';
+  }
 }

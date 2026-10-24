@@ -20,13 +20,14 @@ import (
 
 // Runner 真启动器
 type Runner struct {
-	Cfg      *config.Config
-	Provider mirror.Provider
+	Cfg       *config.Config
+	Provider  mirror.Provider
+	GlobalDir string // 全局共享 libraries/assets
 }
 
 // NewRunner 构造
 func NewRunner(cfg *config.Config, p mirror.Provider) *Runner {
-	return &Runner{Cfg: cfg, Provider: p}
+	return &Runner{Cfg: cfg, Provider: p, GlobalDir: filepath.Join(cfg.DataDir, "shared")}
 }
 
 // LaunchResult 启动结果
@@ -94,7 +95,7 @@ func (r *Runner) Do(ins *instance.Instance, accountName string) (*LaunchResult, 
 		"--username", accountName,
 		"--version", ins.VersionID,
 		"--gameDir", gameDir,
-		"--assetsDir", filepath.Join(gameDir, "assets"),
+		"--assetsDir", filepath.Join(r.GlobalDir, "assets"),
 		"--assetIndex", vd.AssetIndex.ID,
 		"--uuid", "00000000-0000-0000-0000-000000000000",
 		"--accessToken", "0",
@@ -146,7 +147,7 @@ func (r *Runner) classpath(vd *mojang.VersionDetail, gameDir, verDir string) []s
 		if !libAllowedOS(lib) {
 			continue
 		}
-		cp = append(cp, filepath.Join(gameDir, "libraries", lib.Downloads.Artifact.Path))
+		cp = append(cp, filepath.Join(r.GlobalDir, "libraries", lib.Downloads.Artifact.Path))
 	}
 	return cp
 }
@@ -164,7 +165,7 @@ func (r *Runner) extractNatives(vd *mojang.VersionDetail, gameDir, nativesDir st
 		if !ok {
 			continue
 		}
-		jarPath := filepath.Join(gameDir, "libraries", class.Path)
+		jarPath := filepath.Join(r.GlobalDir, "libraries", class.Path)
 		if _, err := os.Stat(jarPath); err != nil {
 			continue
 		}
