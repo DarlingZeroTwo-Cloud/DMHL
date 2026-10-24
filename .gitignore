@@ -1,0 +1,30 @@
+# Go
+dmhl-server
+*.exe
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+
+# Flutter
+client/.dart_tool/
+client/.packages
+client/build/
+client/.flutter-plugins
+client/.flutter-plugins-dependencies
+client/ios/
+client/android/
+client/macos/
+client/windows/
+client/linux/
+
+# 本地运行时数据
+.runtime/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.iml
+.fuse*
