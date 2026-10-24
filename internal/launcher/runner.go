@@ -102,6 +102,16 @@ func (r *Runner) Do(ins *instance.Instance, accountName string) (*LaunchResult, 
 		"--userType", "legacy",
 	}
 
+	if ins.WindowWidth > 0 {
+		args = append(args, "--width", fmt.Sprintf("%d", ins.WindowWidth))
+	}
+	if ins.WindowHeight > 0 {
+		args = append(args, "--height", fmt.Sprintf("%d", ins.WindowHeight))
+	}
+	if ins.ServerAddr != "" {
+		args = append(args, "--server", ins.ServerAddr)
+	}
+
 	cmd := exec.Command(fj.Path, args...)
 	cmd.Dir = gameDir
 

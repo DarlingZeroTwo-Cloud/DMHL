@@ -11,15 +11,18 @@ import (
 type Instance struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
-	VersionID   string `json:"versionId"`   // 如 1.21.4
-	Loader      string `json:"loader"`      // vanilla / fabric / forge / neoforge / quilt
-	LoaderVer   string `json:"loaderVer"`   // Fabric 版本号
+	VersionID   string `json:"versionId"`
+	Loader      string `json:"loader"`
+	LoaderVer   string `json:"loaderVer"`
 	JavaPath    string `json:"javaPath,omitempty"`
 	MaxMemMB    int    `json:"maxMemMb"`
 	MinMemMB    int    `json:"minMemMb"`
 	JVMArgs     string `json:"jvmArgs,omitempty"`
 	GameArgs    string `json:"gameArgs,omitempty"`
 	Icon        string `json:"icon,omitempty"`
+	WindowWidth int    `json:"windowWidth,omitempty"`
+	WindowHeight int   `json:"windowHeight,omitempty"`
+	ServerAddr  string `json:"serverAddr,omitempty"` // 启动后自动连
 	CreatedAt   int64  `json:"createdAt"`
 	LastLaunch  int64  `json:"lastLaunch"`
 }

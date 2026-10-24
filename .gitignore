@@ -28,3 +28,4 @@ client/linux/
 .idea/
 *.iml
 .fuse*
+client/build/

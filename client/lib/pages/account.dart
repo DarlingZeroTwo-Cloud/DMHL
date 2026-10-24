@@ -59,7 +59,7 @@ class _AccountPageState extends State<AccountPage> {
           const SizedBox(height: 12),
           _card(
             child: ListTile(
-              leading: const Icon(Icons.microsoft, size: 32),
+              leading: const Icon(Icons.account_circle, size: 32),
               title: const Text('微软登录'),
               subtitle: const Text('完整 OAuth 流程（后续版本）'),
               trailing: FilledButton(onPressed: () => _todo('微软登录'), child: const Text('登录')),

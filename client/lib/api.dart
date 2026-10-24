@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http';
+import 'package:http/http.dart' as http;
 
 /// DMHL Go 后端 API 客户端
 class DMHLApi {
