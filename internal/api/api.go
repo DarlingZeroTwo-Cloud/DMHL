@@ -10,8 +10,11 @@ import (
 
 	"dmhl/internal/auth"
 	"dmhl/internal/config"
+	"dmhl/internal/fabric"
 	"dmhl/internal/instance"
-	"dmhl/internal/java"
+	"dmhl/internal/install"
+	"dmhl/internal/launcher"
+	"dmhl/internal/modrinth"
 	"dmhl/internal/mirror"
 	"dmhl/internal/mojang"
 	"dmhl/internal/skin"
@@ -34,21 +37,28 @@ func New(cfg *config.Config) *Server {
 	}
 }
 
+func (s *Server) provider() mirror.Provider {
+	return mirror.Provider{UseMirror: s.Cfg.UseMirror}
+}
+
 // Routes 注册路由
 func (s *Server) Routes() *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"ok": true, "name": "DMHL", "version": "0.2.0"})
+	})
 	mux.HandleFunc("/api/versions", s.handleVersions)
 	mux.HandleFunc("/api/version/detail", s.handleVersionDetail)
 	mux.HandleFunc("/api/instances", s.handleInstances)
 	mux.HandleFunc("/api/instances/create", s.handleCreateInstance)
+	mux.HandleFunc("/api/instances/install", s.handleInstall)
 	mux.HandleFunc("/api/instances/launch", s.handleLaunch)
 	mux.HandleFunc("/api/config", s.handleConfig)
 	mux.HandleFunc("/api/auth/offline", s.handleOfflineLogin)
 	mux.HandleFunc("/api/accounts", s.handleAccounts)
 	mux.HandleFunc("/api/skin/import", s.handleSkinImport)
-	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"ok": true, "name": "DMHL", "version": "0.1.0"})
-	})
+	mux.HandleFunc("/api/fabric/loaders", s.handleFabricLoaders)
+	mux.HandleFunc("/api/modrinth/search", s.handleModrinthSearch)
 	return mux
 }
 
@@ -59,25 +69,20 @@ func (s *Server) Start() error {
 	return http.ListenAndServe(addr, s.Routes())
 }
 
-func (s *Server) provider() mirror.Provider {
-	return mirror.Provider{UseMirror: s.Cfg.UseMirror}
-}
-
-// GET /api/versions
+// === 版本 ===
 func (s *Server) handleVersions(w http.ResponseWriter, r *http.Request) {
-	manifest, err := mojang.FetchManifest(s.provider())
+	m, err := mojang.FetchManifest(s.provider())
 	if err != nil {
 		writeError(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, manifest)
+	writeJSON(w, m)
 }
 
-// GET /api/version/detail?url=...
 func (s *Server) handleVersionDetail(w http.ResponseWriter, r *http.Request) {
 	u := r.URL.Query().Get("url")
 	if u == "" {
-		writeError(w, 400, "缺少 url 参数")
+		writeError(w, 400, "缺少 url")
 		return
 	}
 	vd, err := mojang.FetchVersionDetail(u, s.provider())
@@ -88,26 +93,18 @@ func (s *Server) handleVersionDetail(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, vd)
 }
 
-// GET /api/instances
+// === 实例 ===
 func (s *Server) handleInstances(w http.ResponseWriter, r *http.Request) {
-	list, err := s.InstMgr.List()
-	if err != nil {
-		writeError(w, 500, err.Error())
-		return
-	}
+	list, _ := s.InstMgr.List()
 	if list == nil {
 		list = []*instance.Instance{}
 	}
 	writeJSON(w, list)
 }
 
-// POST /api/instances/create
 func (s *Server) handleCreateInstance(w http.ResponseWriter, r *http.Request) {
 	var ins instance.Instance
-	if err := json.NewDecoder(r.Body).Decode(&ins); err != nil {
-		writeError(w, 400, err.Error())
-		return
-	}
+	_ = json.NewDecoder(r.Body).Decode(&ins)
 	if ins.ID == "" {
 		ins.ID = fmt.Sprintf("inst_%d", os.Getpid())
 	}
@@ -118,8 +115,8 @@ func (s *Server) handleCreateInstance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, ins)
 }
 
-// POST /api/instances/launch
-func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
+// POST /api/instances/install { id }
+func (s *Server) handleInstall(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ID string `json:"id"`
 	}
@@ -129,54 +126,90 @@ func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 404, "实例不存在")
 		return
 	}
-	// 自动找 Java（缺则下载）
-	fj, err := java.FindOrDownload(0)
+	manifest, err := mojang.FetchManifest(s.provider())
 	if err != nil {
-		writeError(w, 500, "Java 准备失败: "+err.Error())
+		writeError(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, map[string]any{
-		"ok":      true,
-		"java":    fj.Path,
-		"message": fmt.Sprintf("实例 %s 已就绪，Java: %s", ins.Name, fj.Path),
-	})
+	var verURL string
+	for _, v := range manifest.Versions {
+		if v.ID == ins.VersionID {
+			verURL = v.URL
+			break
+		}
+	}
+	if verURL == "" {
+		writeError(w, 404, "未找到版本 "+ins.VersionID)
+		return
+	}
+	vd, err := mojang.FetchVersionDetail(verURL, s.provider())
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	gameDir := filepath.Join(s.Cfg.DataDir, "instances", ins.ID)
+	im := install.New(gameDir, s.provider())
+	if err := im.InstallVersion(vd, func(msg string, done, total int) {
+		log.Printf("[DMHL] 安装: %s", msg)
+	}); err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "message": fmt.Sprintf("版本 %s 安装完成", ins.VersionID)})
 }
 
-// GET/PUT /api/config
+// POST /api/instances/launch { id, username }
+func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID       string `json:"id"`
+		Username string `json:"username"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req.Username == "" {
+		req.Username = "Player"
+	}
+	ins, err := s.InstMgr.Get(req.ID)
+	if err != nil {
+		writeError(w, 404, "实例不存在")
+		return
+	}
+	runner := launcher.NewRunner(s.Cfg, s.provider())
+	res, err := runner.Do(ins, req.Username)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, res)
+}
+
+// === 配置 ===
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		writeJSON(w, s.Cfg)
 		return
 	}
 	var cfg config.Config
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-		writeError(w, 400, err.Error())
-		return
-	}
+	_ = json.NewDecoder(r.Body).Decode(&cfg)
 	s.Cfg = &cfg
 	_ = config.Save(configPath(), &cfg)
 	writeJSON(w, cfg)
 }
 
-// POST /api/auth/offline  { "username": "Steve" }
+// === 账号 ===
 func (s *Server) handleOfflineLogin(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Username string `json:"username"`
-	}
+	var req struct{ Username string `json:"username"` }
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	if req.Username == "" {
 		writeError(w, 400, "缺少 username")
 		return
 	}
 	acc := auth.OfflineLogin(req.Username)
-	// 追加到账号列表
 	list, _ := s.AuthStore.Load()
 	list = append(list, acc)
 	_ = s.AuthStore.Save(list)
 	writeJSON(w, acc)
 }
 
-// GET /api/accounts
 func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 	list, _ := s.AuthStore.Load()
 	if list == nil {
@@ -185,7 +218,7 @@ func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, list)
 }
 
-// POST /api/skin/import  { "path": "/tmp/x.png", "uuid": "..." }
+// === 皮肤 ===
 func (s *Server) handleSkinImport(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path string `json:"path"`
@@ -198,6 +231,34 @@ func (s *Server) handleSkinImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "path": out})
+}
+
+// === Fabric ===
+func (s *Server) handleFabricLoaders(w http.ResponseWriter, r *http.Request) {
+	mc := r.URL.Query().Get("mc")
+	if mc == "" {
+		writeError(w, 400, "缺少 mc 参数")
+		return
+	}
+	list, err := fabric.ListLoaders(mc, s.provider())
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, list)
+}
+
+// === Modrinth ===
+func (s *Server) handleModrinthSearch(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	mc := r.URL.Query().Get("mc")
+	loader := r.URL.Query().Get("loader")
+	hits, err := modrinth.Search(q, mc, loader, 20)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, hits)
 }
 
 // helpers
